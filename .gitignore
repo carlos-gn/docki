@@ -1,0 +1,19 @@
+# Zig build artifacts
+zig-cache/
+.zig-cache/
+zig-out/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+Thumbs.db
