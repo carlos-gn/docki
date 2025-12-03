@@ -33,7 +33,7 @@ fn printHelp() void {
         \\    Presets are stored in: ~/.config/docki/presets/
         \\    Optional config file: ~/.config/docki/config.json
         \\
-    , .{});
+        , .{});
 }
 
 pub fn main() !void {
@@ -43,18 +43,25 @@ pub fn main() !void {
     const args = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args);
 
-    const parent_process_name = try getParentProcessName(allocator);
-    defer allocator.free(parent_process_name);
+    const default_protected = [_][]const u8{ "finder", "terminal", "iterm2", "ghostty", "warp", "alacritty" };
 
-    const default_protected = [_][]const u8{ "Finder", "Terminal", "iTerm2", "ghostty" };
-
-    var config = Config{ .protected_apps = &default_protected };
+    var protected_apps: []const []const u8 = &default_protected;
+    var config: ?std.json.Parsed(Config) = null;
+    var lowercased_protected = std.ArrayList([]const u8){};
+    defer lowercased_protected.deinit(allocator);
+    
     if (readConfigFile(allocator)) |parsed_config| {
-        config = parsed_config.value;
-        defer parsed_config.deinit();
+        config = parsed_config;
+        // Lowercase config protected apps to match running apps format
+        for (parsed_config.value.protected_apps) |app| {
+            const lowercased = try std.ascii.allocLowerString(allocator, app);
+            try lowercased_protected.append(allocator, lowercased);
+        }
+        protected_apps = lowercased_protected.items;
     } else |_| {
-        // Silently ignore missing config, use defaults
+        // Use defaults (already lowercase)
     }
+    defer if (config) |c| c.deinit();
 
     if (args.len < 2) {
         printHelp();
@@ -76,7 +83,7 @@ pub fn main() !void {
             std.debug.print("Usage: docki load <preset_name>\n", .{});
             return;
         }
-        loadPreset(allocator, args[2]) catch |err| {
+        loadPreset(allocator, args[2], protected_apps) catch |err| {
             std.log.debug("error {any}", .{err});
             std.debug.print("Error: Preset '{s}' not found\n", .{args[2]});
         };
@@ -114,7 +121,7 @@ fn savePreset(allocator: std.mem.Allocator, name: []const u8, running_apps: []co
     std.debug.print("✅ Saved preset '{s}' with running apps\n", .{name});
 }
 
-fn loadPreset(allocator: std.mem.Allocator, name: []const u8) !void {
+fn loadPreset(allocator: std.mem.Allocator, name: []const u8, protected_apps: []const []const u8) !void {
     const home = std.posix.getenv("HOME") orelse return error.HomeNotFound;
     const filePath = try std.fmt.allocPrint(allocator, "{s}/.config/docki/presets/{s}.apps", .{ home, name });
     defer allocator.free(filePath);
@@ -152,7 +159,7 @@ fn loadPreset(allocator: std.mem.Allocator, name: []const u8) !void {
             }
         }
 
-        if (!found and !shouldNeverQuit(trimmed)) {
+        if (!found and !shouldNeverQuit(allocator, trimmed, protected_apps)) {
             try quitApp(allocator, trimmed);
         }
     }
@@ -232,29 +239,19 @@ fn quitApp(allocator: std.mem.Allocator, app_name: []const u8) !void {
     _ = try child.wait();
 }
 
-fn shouldNeverQuit(app_name: []const u8) bool {
-    const protected_apps = [_][]const u8{
-        "Finder",
-        "Terminal",
-        "iTerm2",
-        "ghostty",
-        "Warp",
-        "Alacritty",
-        // Add more terminal apps you use
-    };
-
+fn shouldNeverQuit(allocator: std.mem.Allocator, app_name: []const u8, protected_apps: []const []const u8) bool {
+    const lowercased_app = std.ascii.allocLowerString(allocator, app_name) catch return false;
+    defer allocator.free(lowercased_app);
+    
     for (protected_apps) |protected| {
-        if (std.mem.eql(u8, app_name, protected)) {
+        const lowercased_protected = std.ascii.allocLowerString(allocator, protected) catch continue;
+        defer allocator.free(lowercased_protected);
+        
+        if (std.mem.eql(u8, lowercased_app, lowercased_protected)) {
             return true;
         }
     }
     return false;
-}
-
-fn getParentProcessName(allocator: std.mem.Allocator) ![]const u8 {
-    const term = std.posix.getenv("TERM_PROGRAM") orelse return error.TermNameNotFound;
-    const lowercased_term_name = try std.ascii.allocLowerString(allocator, term);
-    return lowercased_term_name;
 }
 
 fn readConfigFile(allocator: std.mem.Allocator) !std.json.Parsed(Config) {
@@ -267,3 +264,5 @@ fn readConfigFile(allocator: std.mem.Allocator) !std.json.Parsed(Config) {
 
     return std.json.parseFromSlice(Config, allocator, contents, .{ .allocate = .alloc_always });
 }
+
+

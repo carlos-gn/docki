@@ -92,7 +92,7 @@ Create `~/.config/docki/config.json` to prevent certain apps from being quit:
 }
 ```
 
-Protected apps will never be automatically quit when loading a preset.
+Protected apps will never be automatically quit when loading a preset. App names are case-insensitive (you can write them in any case, they'll be matched regardless).
 
 ## How it works
 
