@@ -11,6 +11,7 @@
 - [ ] Homebrew formula for easy installation
 
 ## Future
+- [ ] GUI / UI (native or web-based)
 - [ ] Custom app launch commands (restore VSCode workspaces, Chrome profiles, etc.)
 - [ ] Unit tests
 - [ ] Keyboard shortcuts / hotkeys
